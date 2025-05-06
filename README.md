@@ -14,7 +14,7 @@ The repository includes files for generating a medical document:
 
 ### Prerequisites
 
-* Python 3.12+ installed
+* Python 3.9+ installed
 * Pip package manager
 * Sufficient disk space for language models (at least 75GB recommended)
 * Have the font pack in your work folder to ensure compatability with danish characters
