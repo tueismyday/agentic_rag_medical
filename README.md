@@ -12,6 +12,7 @@ This project implements an **agentic Retrieval-Augmented Generation (RAG)** syst
 * Python 3.12+ installed
 * Pip package manager
 * Sufficient disk space for language models (at least 75GB recommended)
+* Have the font pack in your work folder to ensure compatability with danish characters
 
 ### 1. Set up a Python virtual environment
 
@@ -33,6 +34,10 @@ Ensure you have a valid `requirements.txt`, then run:
 ```bash
 pip install -r requirements.txt
 ```
+or use the 
+```bash
+setup.py
+```
 
 ### 3. Install and set up Ollama
 
@@ -47,7 +52,7 @@ ollama pull gemma3:12b
 
 ### 5. Create custom models with extended context windows
 
-Create the file `ollama_models/gemma3-12b-32k-it` containing:
+Create the file `ollama_models/gemma3-12b-32k` containing:
 
 ```
 FROM gemma3:12b
@@ -57,9 +62,7 @@ PARAMETER num_ctx 32000
 Then run:
 
 ```bash
-ollama create gemma3:12b-32k -f ollama_models/gemma3-12b-32k-it
-ollama create qwen3:4b-32k -f ollama_models/qwen3-4b-32k
-ollama create qwen2.5:14b-instruct-8k -f ollama_models/Qwen-14b-Instruct-8k
+ollama create gemma3:12b-32k -f ollama_models/gemma3-12b-32k
 ```
 
 ### 6. Prepare the vector databases
@@ -106,7 +109,8 @@ The system will either generate a medical document or answer your query using RA
 * **Model loading errors**:
 
   * Ensure Ollama is running (`ollama serve`)
-  * Check models are downloaded (`ollama list`)
+  * Check models are downloaded custom versions created (`ollama list`)
+    
 * **Vector DB errors**:
 
   * Verify path and permissions to ChromaDB directories
@@ -146,32 +150,42 @@ The system will either generate a medical document or answer your query using RA
 
 ### Vector Databases
 
-* `PATIENT_VECTOR_DB`, `GUILDELINE_VECTOR_DB`, `GENERATED_DOCS_VECTOR_DB`
-* Scripts:
+* `PATIENT_VECTOR_DB`: Vectorized patient records
+* `GUILDELINE_VECTOR_DB`: Vectorized hospital guidelines
+* `GENERATED_DOCS_VECTOR_DB`: Vectorized generated documents
+* Scripts to initialize databases:
 
-  * `Chroma_db_guidelines_final.py`: Splits guidelines by 'Overskrift' sections
-  * `Chroma_db_patient_record_final.py`: Chunks by timestamps, infers clinical categories
-  * `Chroma_db_generated_document_final.py`: Stores both coarse and fine chunks from generated PDFs
+  * `Chroma_db_guidelines_final.py`
+  * `Chroma_db_patient_record_final.py`
+  * `Chroma_db_generated_document_final.py`
 
 ### LangChain Tools
 
-* `retrieve_guideline_knowledge()`: Retrieve sections from guideline database
-* `retrieve_patient_info()`: Retrieve timestamped, categorized patient entries
-* `retrieve_generated_document_info()`: Retrieve sections from past generated documents
-* `start_document_generation()`: Start generation from guideline headings
+* `retrieve_guideline_knowledge()`: Retrieves relevant hospital guideline excerpts.
+* `retrieve_patient_info()`: Extracts timestamped, categorized information from patient records.
+* `retrieve_generated_document_info()`: Enables Q\&A over previously generated PDFs.
+* `start_document_generation()`: Begins document drafting based on guideline structure.
 
 ### Generation and Critique
 
-* `generate_section_with_subsections()`, `generate_subsection()`
-* `critique_section_guideline()`, `critique_section_patient_record()`
+* `generate_section_with_subsections()`: Generates each document section and refines it with critiques.
+* `generate_subsection()`: Creates one text subsection from guideline and patient input.
+* `critique_section_guideline()`: Evaluates output against guideline expectations.
+* `critique_section_patient_record()`: Checks if the generated text aligns with patient data.
 
 ### Utilities
 
-* `TokenCounter`, `profile`, `extract_text_from_pdf()`, `save_to_pdf()`, `index_final_document()`
+* `TokenCounter`: Logs and limits token usage.
+* `profile`: Decorator for timing and memory monitoring.
+* `extract_text_from_pdf()`: Loads and extracts text from patient PDFs.
+* `save_to_pdf()`: Outputs UTF-8 encoded PDF with support for Danish fonts.
+* `index_final_document()`: Adds generated document to vector DB for future Q\&A.
 
 ### Agents
 
-* `create_retrieval_agent()`, `invoke_retrieval_agent()`, `generate_answer()`
+* `create_retrieval_agent()`: Builds a LangChain multi-tool agent with memory and reasoning.
+* `invoke_retrieval_agent()`: Runs the agent with performance logging.
+* `generate_answer()`: Core entry point; coordinates agent use, document generation, and output.
 
 ---
 
