@@ -61,17 +61,17 @@ class TokenCountedOllamaLLM(OllamaLLM):
 
 # Loading LLMs with token count
 LLM_RETRIEVE = TokenCountedOllamaLLM(
-    model="gemma3:4b-32k-it",
+    model="gemma3:12b-32k",
     temperature=0.6,
 )
 
 LLM_GENERATE = TokenCountedOllamaLLM(
-    model="gemma3:4b-32k-it",
+    model="gemma3:12b-32k",
     temperature=0.6,
 )
 
 LLM_CRITIQUE = TokenCountedOllamaLLM(
-    model="gemma3:4b-32k-it",
+    model="gemma3:12b-32k",
     temperature=0.1,
 )
 
