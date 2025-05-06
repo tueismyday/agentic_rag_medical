@@ -8,6 +8,86 @@ The repository includes files for generating a medical document:
 * Guideline example for a medical document with structure needed for optimal performance
 * An example of a generated document with the synthetic patient record (this example is generated using gemma3:4b-32k)
 
+![Alt text](Workflow_overview.png)
+
+
+---
+
+## Use Cases
+
+* Generate structured post-discharge care plans from patient data.
+* Answer clinical questions using:
+
+  * Hospital guidelines
+  * Patient records
+  * Previously generated documents
+* Evaluate generated content against both guidelines and patient notes.
+
+---
+
+## Features
+
+* Multi-agent RAG pipeline (retrieval, generation, critique)
+* Local Chroma vector stores (guidelines, patient records, generated docs)
+* LangChain tool-based decision-making
+* Token counting and profiling
+* Iterative critique and refinement workflow
+
+---
+
+
+## Code Structure
+
+### LLMs and Embeddings
+
+* `OllamaLLM`: Administers orchistration and settings of LLM
+* `LLM_RETRIEVE`, `LLM_GENERATE`, `LLM_CRITIQUE`: Role-specific models
+* `HuggingFaceEmbeddings`: All-MPNET model
+
+### Vector Databases
+
+* `PATIENT_VECTOR_DB`: Holds the guidelines for medical documentation (specific header-formats required for optimal RAG)
+* `GUILDELINE_VECTOR_DB`: Holds the patient-record (specific time-stamp format required for optimal RAG)
+* `GENERATED_DOCS_VECTOR_DB`: Holds the generated document for further data exploration with RAG.
+* Scripts to initialize databases:
+
+  * `Chroma_db_guidelines_final.py`: 
+  * `Chroma_db_patient_record_final.py`: 
+  * `Chroma_db_generated_document_final.py`: 
+
+### LangChain Tools
+
+* `retrieve_guideline_knowledge()`: Retrieves relevant hospital guideline chunks.
+* `retrieve_patient_info()`: Extracts timestamped, reranked information chunks from patient records.
+* `retrieve_generated_document_info()`: Enables Q\&A over previously generated PDFs with retrieval of relevant chunks.
+* `start_document_generation()`: Begins document drafting based on guideline structure.
+
+### Generation and Critique
+
+* `retrieve_guidelines_by_section()`: Retrieves all guideline sections by using section title metadata.
+* `generate_section_with_subsections()`: Generates each document section and refines it with critiques.
+* `generate_subsection()`: Creates one text subsection from guideline and patient input.
+* `critique_section_guideline()`: Evaluates output against guideline expectations.
+* `critique_section_patient_record()`: Checks if the generated text aligns with patient data.
+* `generate_retrieval_query()`: Creates search queries for RAG-search in the document-creation loop based on instruction
+
+
+### Utilities
+
+* `TokenCounter`: Logs and limits token usage.
+* `profile`: Decorator for timing and memory monitoring.
+* `extract_text_from_pdf()`: Loads and extracts text from PDFs.
+* `save_to_pdf()`: Outputs UTF-8 encoded PDF with support for Danish fonts.
+* `index_final_document()`: Adds generated document to vector DB for future Q\&A.
+
+### Agents
+
+* `create_retrieval_agent()`: Builds a LangChain multi-tool agent with memory and reasoning.
+* `invoke_retrieval_agent()`: Runs the agent with performance logging.
+* `generate_answer()`: Core entry point; coordinates agent use, document generation, and output.
+
+---
+
 ---
 
 ## Installation Guide
@@ -120,78 +200,6 @@ The system will either generate a medical document or answer your query using RA
 
   * Verify path and permissions to ChromaDB directories
 
----
 
-## Use Cases
-
-* Generate structured post-discharge care plans from patient data.
-* Answer clinical questions using:
-
-  * Hospital guidelines
-  * Patient records
-  * Previously generated documents
-* Evaluate generated content against both guidelines and patient notes.
-
----
-
-## Features
-
-* Multi-agent RAG pipeline (retrieval, generation, critique)
-* Local Chroma vector stores (guidelines, patient records, generated docs)
-* LangChain tool-based decision-making
-* Token counting and profiling
-* Iterative critique and refinement workflow
-
----
-
-
-## Code Structure
-
-### LLMs and Embeddings
-
-* `TokenCountedOllamaLLM`: Tracks token usage
-* `LLM_RETRIEVE`, `LLM_GENERATE`, `LLM_CRITIQUE`: Role-specific models
-* `HuggingFaceEmbeddings`: All-MPNET model
-
-### Vector Databases
-
-* `PATIENT_VECTOR_DB`: Vectorized patient records
-* `GUILDELINE_VECTOR_DB`: Vectorized hospital guidelines
-* `GENERATED_DOCS_VECTOR_DB`: Vectorized generated documents
-* Scripts to initialize databases:
-
-  * `Chroma_db_guidelines_final.py`
-  * `Chroma_db_patient_record_final.py`
-  * `Chroma_db_generated_document_final.py`
-
-### LangChain Tools
-
-* `retrieve_guideline_knowledge()`: Retrieves relevant hospital guideline excerpts.
-* `retrieve_patient_info()`: Extracts timestamped, categorized information from patient records.
-* `retrieve_generated_document_info()`: Enables Q\&A over previously generated PDFs.
-* `start_document_generation()`: Begins document drafting based on guideline structure.
-
-### Generation and Critique
-
-* `generate_section_with_subsections()`: Generates each document section and refines it with critiques.
-* `generate_subsection()`: Creates one text subsection from guideline and patient input.
-* `critique_section_guideline()`: Evaluates output against guideline expectations.
-* `critique_section_patient_record()`: Checks if the generated text aligns with patient data.
-
-### Utilities
-
-* `TokenCounter`: Logs and limits token usage.
-* `profile`: Decorator for timing and memory monitoring.
-* `extract_text_from_pdf()`: Loads and extracts text from patient PDFs.
-* `save_to_pdf()`: Outputs UTF-8 encoded PDF with support for Danish fonts.
-* `index_final_document()`: Adds generated document to vector DB for future Q\&A.
-
-### Agents
-
-* `create_retrieval_agent()`: Builds a LangChain multi-tool agent with memory and reasoning.
-* `invoke_retrieval_agent()`: Runs the agent with performance logging.
-* `generate_answer()`: Core entry point; coordinates agent use, document generation, and output.
-
----
 
 
