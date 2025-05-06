@@ -99,7 +99,7 @@ queries = [
 Then run:
 
 ```bash
-python Agentic_RAG_Final_fo_real_fo_real.py
+python Agentic_RAG_Final.py
 ```
 
 The system will either generate a medical document or answer your query using RAG from the three vector databases, depending on the nature of the input.
