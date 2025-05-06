@@ -53,7 +53,13 @@ The repository includes files for generating a medical document:
 
   * `Chroma_db_guidelines_final.py`: 
   * `Chroma_db_patient_record_final.py`: 
-  * `Chroma_db_generated_document_final.py`: 
+  * `Chroma_db_generated_document_final.py`:
+ 
+#### Tips:
+
+* The vectordatabase `Chroma_db_patient_record_final.py` uses the date-stamp `dd.mm.yyyy` to chunk the text, make sure the patient record uses this format for uptimal RAG performance.
+* The vectordatabase `Chroma_db_guidelines_final.py` uses the section deviders `Overskrift:` and `sub_section` to chunk the text, make sure the patient record uses this format for uptimal RAG performance.
+ 
 
 ### LangChain Tools
 
@@ -201,9 +207,5 @@ The system will either generate a medical document or answer your query using RA
   * Verify path and permissions to ChromaDB directories
 
 
-## Tips:
-
-* The vectordatabase for patient journals use the date-stamp `dd.mm.yyyy` to chunk the text, make sure the patient record uses this format for uptimal RAG performance.
-* The vectordatabase for hospital guidelines use the section deviders `Overskrift:` and `sub_section` to chunk the text, make sure the patient record uses this format for uptimal RAG performance.
 
 
