@@ -3,10 +3,10 @@ Agentic RAG workflow for medical documentation automation - a proof of concept
 
 This project implements an **agentic Retrieval-Augmented Generation (RAG)** system for generating post-discharge medical documents and answering clinical queries using patient journal records and hospital guidelines. Built in Python with LangChain and local vector databases, the system simulates a multi-step, expert-level clinical reasoning process to reduce administrative burden in healthcare.
 
-The reposotory includes files for generating a medical document: 
+The repository includes files for generating a medical document: 
 * Synthethic patient record created with ChatGPT 4o
 * Guideline example for a medical document with structure needed for optimal performance
-* an example of a generated document with the synthetic patient record
+* An example of a generated document with the synthetic patient record
 
 ---
 
