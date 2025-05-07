@@ -231,14 +231,16 @@ def generate_retrieval_query(section_title:str, subsection_title:str, subsection
         String containing the optimized query
     """
     prompt = f"""
-    Jeg skal skrive {subsection_title} i sectionen {section_title} for en patient på et hospital. 
-    Fra hospitalets retningslinjer ved jeg at jeg skal fokusere på følgende:
-    
+    Du skal hente information til {subsection_title} i sektionen {section_title} for en patient, der er indlagt på hospitalet.  
+    Baseret på hospitalets retningslinjer skal du fokusere på følgende punkter:
+
     {subsection_guidelines}
-    
-    Baseret på ovenstående, formulér en præcis og specifik query (på dansk) der vil hjælpe mig med at finde de relevante informationer i patientjournalen i en RAG-søgning. 
-    Giv mig KUN en query til RAG som indeholder de nøgleord og termer der er relevante for at finde informationerne du søger i journalen.
-    Brug dette format: "Jeg søger efter [nøgleord] i patientjournalen for at finde informationer om [emne]."
+
+    Din opgave:  
+    - Formulér én præcis og målrettet søgeforespørgsel (på dansk), der kan bruges til at finde de nødvendige informationer i patientjournalen ved hjælp af RAG.  
+    - Brug terminologi fra retningslinjerne, hvor det er relevant.  
+    - Hvis retningslinjerne antyder en tidsramme (f.eks. nylige hændelser), så indarbejd dette i din forespørgsel.  
+    - Hvis emnet er bredt, bør du inkludere relevante synonymer eller relaterede kliniske termer.
     """
     
     query = LLM_RETRIEVE.invoke(
