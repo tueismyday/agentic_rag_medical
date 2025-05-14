@@ -8,7 +8,7 @@ The repository includes files for generating a medical document:
 * Guideline example for a medical document with structure needed for optimal performance
 * An example of a generated document with the synthetic patient record (this example is generated using gemma3:12b-32k)
 
-![Alt text](Workflow_overview.png)
+![Alt text](workflow_schematic.png)
 
 
 ---
