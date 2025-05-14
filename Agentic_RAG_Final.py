@@ -478,125 +478,79 @@ def retrieve_patient_info(query: str, initial_k: int = 20, final_k: int = 15) ->
         return score
 
 
-    # Apply reranking to all filtered results
     print(f"[INFO] Reranking {len(filtered_results)} documents...")
     reranked_results = sorted(filtered_results, key=rank_score, reverse=True)
-    
-    # Apply the final tier limit - only keep top final_k documents
     print(f"[INFO] Limiting to top {final_k} documents after reranking...")
     limited_results = reranked_results[:final_k]
-    
     print(f"[INFO] Selected {len(limited_results)} documents out of {len(filtered_results)} filtered documents")
 
-    # Grouping logic
-    grouped_results = defaultdict(lambda: {
-        "content": [],
-        "category": "Uncategorized",
-        "date": ""
-    })
+    query_lower = query.lower()
+    target_categories = [cat for cat, kw in query_categories.items() if any(k in query_lower for k in kw)]
+
 
     # Identify query targets
     query_lower = query.lower()
     target_categories = [cat for cat, kw in query_categories.items()
                         if any(k in query_lower for k in kw)]
 
-    for doc in limited_results:
-        category = doc.metadata.get("category", "Ukategoriseret")
-        date_str = doc.metadata.get("date", "")
-        entry_type = doc.metadata.get("entry_type", "Note") # Default to "Note" if not specified, DB will include logic for this in future iterations of the code
-        key = f"{entry_type} ({date_str or 'Ukendt dato'})"
-
-        # DEBUG: Log category and content preview
-        print(f"[DEBUG] Including doc with category='{category}' and date='{date_str}'")
-
-        grouped_results[key]["content"].append(doc.page_content)
-        grouped_results[key]["category"] = category
-        grouped_results[key]["date"] = date_str
-
-
-    if not grouped_results:
-        return "No matching patient information found for the query."
-
-
-    # Format response including metadata summary
-    # Initialize the response with a header
+    # Format per-chunk output
     lines = ["# Patientoplysninger\n"]
     if target_categories:
         lines.append(f"Filtreret efter kategorier: {', '.join(target_categories)}\n")
 
-    # Add a summary of retrieval metrics 
     lines.append(f"*Søgning fandt {len(filtered_results)} relevante dokumenter og præsenterer de {len(limited_results)} mest relevante.*\n")
-    
-    # Prepare document scores for metadata summaries
-    doc_scores = {}
+
+    scores = [rank_score(doc) for doc in limited_results]
+    max_score = max(scores) if scores else 1
+    min_score = min(scores) if scores else 0
+    score_range = max(max_score - min_score, 0.001)
+
     for doc in limited_results:
-        key = f"{doc.metadata.get('entry_type', 'Note')} ({doc.metadata.get('date', '') or 'Ukendt dato'})"
-        if key not in doc_scores:
-            doc_scores[key] = rank_score(doc)
-        else:
-            # If multiple docs in same group, take highest score
-            doc_scores[key] = max(doc_scores[key], rank_score(doc))
-    
-    # Calculate relative relevance percentages for the metadata summaries
-    if doc_scores:
-        max_score = max(doc_scores.values())
-        min_score = min(doc_scores.values())
-        score_range = max(max_score - min_score, 0.001)  # Avoid division by zero
-        
-        for key in doc_scores:
-            normalized_score = (doc_scores[key] - min_score) / score_range
-            # Convert to percentage with 0% being least relevant and 100% being most relevant
-            doc_scores[key] = int(normalized_score * 100)
+        entry_type = doc.metadata.get("entry_type", "Note")
+        date_str = doc.metadata.get("date", "") or "Ukendt dato"
+        category = doc.metadata.get("category", "Ukategoriseret")
+        content = doc.page_content.strip()
 
-    reranked_keys = list(grouped_results.keys())
-    for key in reranked_keys:
-        g = grouped_results[key]
-        date_str = g["date"]
-        category = g["category"]
+        raw_score = rank_score(doc)
+        relevance = int((raw_score - min_score) / score_range * 100)
 
-        relevance = doc_scores.get(key, 0)
-        
-        lines.append(f"## {key}")
-        
-        # Add metadata summary
-        meta_summary = []
-        meta_summary.append(f"**Relevans:** {relevance}% match til forespørgsel")
-        
-        if date_str:
-            # Add recency indicator if date is available
-            try:
-                doc_date = parse_date_safe(date_str)
-                now = datetime.now()
-                days_ago = (now - doc_date).days
-                if days_ago < 7:
-                    meta_summary.append("**Periode:** Meget nylig (<1 uge)")
-                elif days_ago < 30:
-                    meta_summary.append("**Periode:** Nylig (<1 måned)")
-                elif days_ago < 180:
-                    meta_summary.append("**Periode:** Inden for 6 måneder")
-                elif days_ago < 365:
-                    meta_summary.append("**Periode:** Inden for 1 år")
-                else:
-                    meta_summary.append(f"**Periode:** {days_ago // 365} år gammel")
-            except:
-                meta_summary.append(f"**Dato:** {date_str}")
-        
-            
-        # Add category information
+        lines.append(f"## {entry_type} ({date_str})")
+        meta_summary = [f"**Relevans:** {relevance}% match til forespørgsel"]
+
+        try:
+            doc_date = parse_date_safe(date_str)
+            now = datetime.now()
+            days_ago = (now - doc_date).days
+            if days_ago < 7:
+                meta_summary.append("**Periode:** Meget nylig (<1 uge)")
+            elif days_ago < 30:
+                meta_summary.append("**Periode:** Nylig (<1 måned)")
+            elif days_ago < 180:
+                meta_summary.append("**Periode:** Inden for 6 måneder")
+            elif days_ago < 365:
+                meta_summary.append("**Periode:** Inden for 1 år")
+            else:
+                meta_summary.append(f"**Periode:** {days_ago // 365} år gammel")
+        except:
+            meta_summary.append(f"**Dato:** {date_str}")
+
         meta_summary.append(f"**Kategori:** {category}")
-        
-        # Add the metadata summary as a specially formatted block
+
+        content_length = len(content)
+        if content_length < 200:
+            meta_summary.append("**Omfang:** Kort note")
+        elif content_length < 500:
+            meta_summary.append("**Omfang:** Mellemlang note")
+        else:
+            meta_summary.append("**Omfang:** Detaljeret dokumentation")
+
         lines.append(f"*{' | '.join(meta_summary)}*\n")
-        
-        # Add the actual content
-        lines.append("\n\n".join(g["content"]))
+        lines.append(content)
         lines.append("\n---\n")
 
-    lines.append("**Tip**: Brug specifikke termer som 'rehabilitering', 'sygepleje' eller 'indlæggelse' for mere målrettede resultater.")
-    
-    result_text = "\n".join(lines)
+    lines.append("**Tip**: Brug specifikke termer som 'medicin', 'blodprøver' eller 'operationer' for mere målrettede resultater.")
+    return "\n".join(lines)
 
-    return result_text
 
 @tool
 def retrieve_generated_document_info(query: str) -> str:
