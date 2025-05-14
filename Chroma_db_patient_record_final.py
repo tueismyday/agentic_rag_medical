@@ -112,6 +112,31 @@ def split_by_date(text: str) -> list[tuple[str, str]]:
 
     return chunks
 
+def extract_entry_type(text: str) -> str:
+    """
+    Extract the entry type from the first line after the timestamp.
+
+    Example:
+        From: "01.01.11 11:11 Medicinnotat, sygehusapotek\\n..."
+        Extracts: "Medicinnotat, sygehusapotek"
+
+    Args:
+        text: The text chunk containing timestamp and header line
+
+    Returns:
+        str: The extracted entry type, or 'Note' if not found
+    """
+    pattern = r"(\\d{2}\\.\\d{2}\\.\\d{2}(?: \\d{2}:\\d{2})?)\\s+(.*)"
+    lines = text.strip().splitlines()
+    if not lines:
+        return "Note"
+
+    match = re.match(pattern, lines[0])
+    if match:
+        return match.group(2).strip()
+
+    return "Note"
+
 def load_and_process_pdfs(data_dir: str):
     """Load PDFs and split by date/timestamp"""
     
@@ -148,7 +173,8 @@ def load_and_process_pdfs(data_dir: str):
                     "chunk_index": i,
                     "granularity": "timestamp_chunk",
                     "category": infer_category(chunk_text),
-                    "date": extract_date_from_text(date_str)
+                    "date": extract_date_from_text(date_str),
+                    "entry_type": extract_entry_type(chunk_text)
                 }
             })
 
