@@ -383,10 +383,15 @@ def retrieve_patient_info(query: str, initial_k: int = 20, final_k: int = 15) ->
         str: A Markdown-formatted summary of high-relevance journal content, grouped and optionally time-ordered.
     """
     
+    # Adjustment of the functionalities:
+    chronological_rerank = True
+    query_categories_rerank = True
+    
+    
     # Load embedding model and cache for reuse
     embedding_model = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
     
-    # Cache the query embedding so we don't need to recompute it
+    # Cache the query embedding so we don't need to recompute it when reranking
     query_embedding = embedding_model.encode(query, convert_to_tensor=True)
     
     # Initial semantic search with score filtering - retrieve more documents initially
@@ -434,8 +439,6 @@ def retrieve_patient_info(query: str, initial_k: int = 20, final_k: int = 15) ->
     "funktionsevne": ["forflytning", "toiletbesøg", "gå", "drikke", "spise", "tøj", "vask", "funktionsevne", "adl", "selvstændighed"],
     }
 
-    # Danske nøgleord for tid/kronologi
-    date_keywords = ["seneste", "nyeste", "sidste", "historik", "tidligere", "forløb", "tidslinje", "opfølgning", "dato", "tidspunkt", "dag", "uge", "måned", "år"]
 
     def parse_date_safe(date_str):
         for fmt in ("%y.%m.%d %H:%M", "%y.%m.%d"):
@@ -448,18 +451,32 @@ def retrieve_patient_info(query: str, initial_k: int = 20, final_k: int = 15) ->
     # Relevance and category-based reranking - now using cached embeddings
     def rank_score(doc):
         content = doc.page_content.lower()
-        
-        # Use cached embeddings instead of re-encoding
         content_embedding = doc_embeddings[id(doc)]
+        
+        # Base similarity score
         score = util.cos_sim(query_embedding, content_embedding)[0][0].item()
-
-        # Bonus if categories match
-        category = doc.metadata.get("category", "").lower()
-        for cat, keywords in query_categories.items():
-            if cat in category or any(kw in content for kw in keywords):
-                score += 0.3
+        
+        # Add bonus for category match
+        if query_categories_rerank:
+            category = doc.metadata.get("category", "").lower()
+            for cat, keywords in query_categories.items():
+                if cat in category or any(kw in content for kw in keywords):
+                    score += 0.3
+        
+        # Add bonus for recency if the query has temporal keywords
+        if chronological_rerank:
+            date_str = doc.metadata.get("date", "")
+            try:
+                doc_date = parse_date_safe(date_str)
+                days_ago = (datetime.now() - doc_date).days
+                # Linear decay: more recent = higher bonus, older = lower
+                recency_bonus = max(0, 0.3 - (days_ago / 365.0) * 0.3)  # Max +0.3 if today, 0 if older than 1 year
+                score += recency_bonus
+            except:
+                pass  # Skip if no valid date
 
         return score
+
 
     # Apply reranking to all filtered results
     print(f"[INFO] Reranking {len(filtered_results)} documents...")
@@ -482,12 +499,11 @@ def retrieve_patient_info(query: str, initial_k: int = 20, final_k: int = 15) ->
     query_lower = query.lower()
     target_categories = [cat for cat, kw in query_categories.items()
                         if any(k in query_lower for k in kw)]
-    chronological_sort = any(k in query_lower for k in date_keywords)
 
     for doc in limited_results:
         category = doc.metadata.get("category", "Ukategoriseret")
         date_str = doc.metadata.get("date", "")
-        entry_type = doc.metadata.get("entry_type", "Note")
+        entry_type = doc.metadata.get("entry_type", "Note") # Default to "Note" if not specified, DB will include logic for this in future iterations of the code
         key = f"{entry_type} ({date_str or 'Ukendt dato'})"
 
         # DEBUG: Log category and content preview
@@ -501,20 +517,14 @@ def retrieve_patient_info(query: str, initial_k: int = 20, final_k: int = 15) ->
     if not grouped_results:
         return "No matching patient information found for the query."
 
-    # Sort keys by date
-    sorted_keys = list(grouped_results.keys())
-    if chronological_sort:
-        sorted_keys.sort(
-            key=lambda k: parse_date_safe(grouped_results[k].get("date", "")),
-            reverse=True
-        )
 
-    # Format response
+    # Format response including metadata summary
+    # Initialize the response with a header
     lines = ["# Patientoplysninger\n"]
     if target_categories:
         lines.append(f"Filtreret efter kategorier: {', '.join(target_categories)}\n")
 
-    # Add a summary of retrieval metrics
+    # Add a summary of retrieval metrics 
     lines.append(f"*Søgning fandt {len(filtered_results)} relevante dokumenter og præsenterer de {len(limited_results)} mest relevante.*\n")
     
     # Prepare document scores for metadata summaries
@@ -538,11 +548,12 @@ def retrieve_patient_info(query: str, initial_k: int = 20, final_k: int = 15) ->
             # Convert to percentage with 0% being least relevant and 100% being most relevant
             doc_scores[key] = int(normalized_score * 100)
 
-    for key in sorted_keys:
+    reranked_keys = list(grouped_results.keys())
+    for key in reranked_keys:
         g = grouped_results[key]
         date_str = g["date"]
         category = g["category"]
-        content_length = sum(len(c) for c in g["content"])
+
         relevance = doc_scores.get(key, 0)
         
         lines.append(f"## {key}")
@@ -570,13 +581,6 @@ def retrieve_patient_info(query: str, initial_k: int = 20, final_k: int = 15) ->
             except:
                 meta_summary.append(f"**Dato:** {date_str}")
         
-        # Add content size indicator
-        if content_length < 200:
-            meta_summary.append("**Omfang:** Kort note")
-        elif content_length < 500:
-            meta_summary.append("**Omfang:** Mellemlang note")
-        else:
-            meta_summary.append("**Omfang:** Detaljeret dokumentation")
             
         # Add category information
         meta_summary.append(f"**Kategori:** {category}")
@@ -588,7 +592,7 @@ def retrieve_patient_info(query: str, initial_k: int = 20, final_k: int = 15) ->
         lines.append("\n\n".join(g["content"]))
         lines.append("\n---\n")
 
-    lines.append("**Tip**: Brug specifikke termer som 'medicin', 'blodprøver' eller 'operationer' for mere målrettede resultater.")
+    lines.append("**Tip**: Brug specifikke termer som 'rehabilitering', 'sygepleje' eller 'indlæggelse' for mere målrettede resultater.")
     
     result_text = "\n".join(lines)
 
@@ -619,7 +623,7 @@ def retrieve_generated_document_info(query: str) -> str:
     # Perform similarity search with metadata filter capability
     # Try multiple granularities and include summaries
     # Perform similarity search with scores
-    SCORE_THRESHOLD = 0.35  # Adjust based on empirical results
+    SCORE_THRESHOLD = 0.3
 
     paragraph_raw = GENERATED_DOCS_VECTOR_DB.similarity_search_with_score(query, k=10, filter={"granularity": "paragraph"})
     section_raw = GENERATED_DOCS_VECTOR_DB.similarity_search_with_score(query, k=10, filter={"granularity": "section"})
@@ -629,20 +633,16 @@ def retrieve_generated_document_info(query: str) -> str:
     paragraph_results = [doc for doc, score in paragraph_raw if score >= SCORE_THRESHOLD]
     section_results = [doc for doc, score in section_raw if score >= SCORE_THRESHOLD]
     summary_results = [doc for doc, score in summary_raw if score >= SCORE_THRESHOLD]
-
-
-    # Merge all and deduplicate by (doc_id, chunk_index)
-    seen = set()
+    
+    # Merge all 
     results = []
     for res in paragraph_results + section_results + summary_results:
-        uid = (res.metadata.get("document_id"), res.metadata.get("chunk_index"))
-        if uid not in seen:
-            seen.add(uid)
             results.append(res)
 
     
     if not results:
         return "No relevant document found for this query."
+
     
     # Try to identify specific sections or documents mentioned in the query
     query_lower = query.lower()
@@ -655,8 +655,8 @@ def retrieve_generated_document_info(query: str) -> str:
     
     # Track all sections by document for the complete listing
     document_sections = {}
-    
-    for doc in results:
+
+    for doc in results: # extract metadata for later filtering and display
         section = doc.metadata.get("section_title", "").lower()
         doc_name = doc.metadata.get("document_name", "").lower()
         doc_id = doc.metadata.get("document_id", "")
@@ -676,17 +676,9 @@ def retrieve_generated_document_info(query: str) -> str:
             document_sections[doc_id]["sections"].add(section)
     
     # Check if query contains any specific section or document references
-    for section in all_sections:
-        if section in query_lower:
-            likely_section = section
-            break
-    
-    for doc_name in all_documents:
-        # Remove file extension for matching
-        clean_name = doc_name.replace(".pdf", "")
-        if clean_name in query_lower:
-            likely_document = doc_name
-            break
+    likely_sections = [section for section in all_sections if section in query_lower]
+    likely_documents = [doc_name for doc_name in all_documents if doc_name.replace(".pdf", "") in query_lower]
+
     
     # Group results by document and section
     grouped = {}
@@ -697,8 +689,7 @@ def retrieve_generated_document_info(query: str) -> str:
         chunk_index = doc.metadata.get("chunk_index", 0)
         
         # Apply filters if specific section or document was detected
-        if (likely_section and section.lower() != likely_section) or \
-           (likely_document and doc_name.lower() != likely_document):
+        if (likely_sections and section.lower() not in likely_sections) or (likely_documents and doc_name.lower() not in likely_documents):
             continue
             
         key = f"{doc_name} | {section}"
@@ -730,13 +721,12 @@ def retrieve_generated_document_info(query: str) -> str:
     
     # Add filter information if applicable
     filters_applied = []
-    if likely_section:
-        filters_applied.append(f"Section: '{likely_section}'")
-    if likely_document:
-        filters_applied.append(f"Document: '{likely_document.replace('.pdf', '')}'")
-    
-    if filters_applied:
-        output_lines.append(f"Results filtered by: {', '.join(filters_applied)}\n")
+
+    if likely_sections:
+        filters_applied.append(f"Sections: {', '.join([f'‘{s}’' for s in likely_sections])}")
+    if likely_documents:
+        filters_applied.append(f"Documents: {', '.join([f'‘{d.replace('.pdf', '')}’' for d in likely_documents])}")
+
     
     # Sort groups by document name for consistent output
     sorted_keys = sorted(grouped.keys())
@@ -813,31 +803,25 @@ def retrieve_guideline_knowledge(query: str) -> str:
     """
     # Perform similarity search with metadata filter capability
     # Try multiple granularities and include summaries
-    # Perform similarity search with scoring and filter weak matches
-    SCORE_THRESHOLD = 0.35
+    # Perform similarity search with scores
+    SCORE_THRESHOLD = 0.3
 
-    paragraph_raw = GUILDELINE_VECTOR_DB.similarity_search_with_score(query, k=10, filter={"granularity": "paragraph"})
-    section_raw = GUILDELINE_VECTOR_DB.similarity_search_with_score(query, k=5, filter={"granularity": "section"})
-    summary_raw = GUILDELINE_VECTOR_DB.similarity_search_with_score(query, k=1, filter={"section_title": "Document Summary"})
+    paragraph_raw = GENERATED_DOCS_VECTOR_DB.similarity_search_with_score(query, k=10, filter={"granularity": "paragraph"})
+    section_raw = GENERATED_DOCS_VECTOR_DB.similarity_search_with_score(query, k=10, filter={"granularity": "section"})
+    summary_raw = GENERATED_DOCS_VECTOR_DB.similarity_search_with_score(query, k=1, filter={"section_title": "Document Summary"})
 
-    # Filter results based on score threshold
+    # Filter out low-scoring matches
     paragraph_results = [doc for doc, score in paragraph_raw if score >= SCORE_THRESHOLD]
     section_results = [doc for doc, score in section_raw if score >= SCORE_THRESHOLD]
     summary_results = [doc for doc, score in summary_raw if score >= SCORE_THRESHOLD]
-
-
-    # Merge all and deduplicate by (doc_id, chunk_index)
-    seen = set()
+    
+    # Merge all 
     results = []
     for res in paragraph_results + section_results + summary_results:
-        uid = (res.metadata.get("document_id"), res.metadata.get("chunk_index"))
-        if uid not in seen:
-            seen.add(uid)
-            results.append(res)
+        results.append(res)
 
-    
     if not results:
-        return "No relevant guidelines found for this query."
+        return "No relevant document found for this query."
     
     # Try to identify specific sections or documents mentioned in the query
     query_lower = query.lower()
@@ -850,8 +834,8 @@ def retrieve_guideline_knowledge(query: str) -> str:
     
     # Track all sections by document for the complete listing
     document_sections = {}
-    
-    for doc in results:
+
+    for doc in results: # extract metadata for later filtering and display
         section = doc.metadata.get("section_title", "").lower()
         doc_name = doc.metadata.get("document_name", "").lower()
         doc_id = doc.metadata.get("document_id", "")
@@ -871,17 +855,9 @@ def retrieve_guideline_knowledge(query: str) -> str:
             document_sections[doc_id]["sections"].add(section)
     
     # Check if query contains any specific section or document references
-    for section in all_sections:
-        if section in query_lower:
-            likely_section = section
-            break
-    
-    for doc_name in all_documents:
-        # Remove file extension for matching
-        clean_name = doc_name.replace(".pdf", "")
-        if clean_name in query_lower:
-            likely_document = doc_name
-            break
+    likely_sections = [section for section in all_sections if section in query_lower]
+    likely_documents = [doc_name for doc_name in all_documents if doc_name.replace(".pdf", "") in query_lower]
+
     
     # Group results by document and section
     grouped = {}
@@ -892,8 +868,7 @@ def retrieve_guideline_knowledge(query: str) -> str:
         chunk_index = doc.metadata.get("chunk_index", 0)
         
         # Apply filters if specific section or document was detected
-        if (likely_section and section.lower() != likely_section) or \
-           (likely_document and doc_name.lower() != likely_document):
+        if (likely_sections and section.lower() not in likely_sections) or (likely_documents and doc_name.lower() not in likely_documents):
             continue
             
         key = f"{doc_name} | {section}"
@@ -913,7 +888,7 @@ def retrieve_guideline_knowledge(query: str) -> str:
         grouped[key]["content"].append(doc.page_content)
     
     if not grouped:
-        return "No relevant guideline sections matched your specific query criteria."
+        return "No relevant document sections matched your specific query criteria."
     
     # Sort chunks within each section by their index to maintain document order
     for key in grouped:
@@ -921,17 +896,16 @@ def retrieve_guideline_knowledge(query: str) -> str:
         grouped[key]["content"] = [chunk["content"] for chunk in grouped[key]["chunks"]]
     
     # Build formatted output
-    output_lines = ["# Hospital Guideline Search Results\n"]
+    output_lines = ["# Generated Document Search Results\n"]
     
     # Add filter information if applicable
     filters_applied = []
-    if likely_section:
-        filters_applied.append(f"Section: '{likely_section}'")
-    if likely_document:
-        filters_applied.append(f"Document: '{likely_document.replace('.pdf', '')}'")
-    
-    if filters_applied:
-        output_lines.append(f"Results filtered by: {', '.join(filters_applied)}\n")
+
+    if likely_sections:
+        filters_applied.append(f"Sections: {', '.join([f'‘{s}’' for s in likely_sections])}")
+    if likely_documents:
+        filters_applied.append(f"Documents: {', '.join([f'‘{d.replace('.pdf', '')}’' for d in likely_documents])}")
+
     
     # Sort groups by document name for consistent output
     sorted_keys = sorted(grouped.keys())
@@ -984,6 +958,8 @@ def retrieve_guideline_knowledge(query: str) -> str:
     output_lines.append("- For more specific results, mention the section or document name in your query")
     output_lines.append("- To see content from sections marked '?', try rephrasing your query to include those section names")
     output_lines.append("- For full document content, include the document name in your query without specific section terms")
+    
+    return "\n".join(output_lines)
     
     return "\n".join(output_lines)
 
