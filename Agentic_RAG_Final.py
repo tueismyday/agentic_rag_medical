@@ -14,7 +14,6 @@ from langchain.schema.runnable import RunnableConfig
 from langchain.agents import initialize_agent, AgentType
 from langchain.memory import ConversationTokenBufferMemory
 from langchain.tools import tool
-from collections import defaultdict
 from sentence_transformers import util, SentenceTransformer
 from datetime import datetime
 
