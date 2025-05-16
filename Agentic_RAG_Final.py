@@ -197,7 +197,7 @@ TOKEN_COUNTER = TokenCounter()
 # This decorator can be used to profile the execution time of functions.
 def profile(func):
     """
-    Decorator function that measures and reports execution time and memory usage of the wrapped function.
+    Decorator function that measures and reports execution time of the wrapped function.
         Args:
             func: The function to be profiled.
         Returns:
@@ -1024,7 +1024,7 @@ curly braces
 @profile
 def invoke_retrieval_agent(query: str):
     """
-    Uses an LLM agent to collect information for answering the user query.
+    Uses an LLM agent to collect information for answering the user query aswell as generating sub-sections of the document.
     This function is profiled for performance monitoring.
         Args:
             query (str): The user's query to be processed by the agent.
@@ -1170,7 +1170,7 @@ def generate_subsection(section_title:str, subsection_title:str, section_intro:s
     print(f"[TOKEN INFO] Estimated prompt size: ~{estimated_prompt_tokens} tokens")
     
     # Check if we might hit token limits
-    max_tokens = 32000  # Set this to your model's context window
+    max_tokens = 32000
     if current_usage['total_tokens'] + estimated_prompt_tokens > max_tokens * 0.8:
         print(f"\n[WARNING] Approaching token limit! Consider splitting document generation.")
         print(f"[WARNING] Current usage: {current_usage['total_tokens']}, Estimated new tokens: {estimated_prompt_tokens}")
@@ -1265,10 +1265,10 @@ def generate_section_with_subsections(section_title:str, section_guidelines:str,
     if len(subsections) == 1 and subsections[0][0] == "Main Content":
         # If there's only one subsection and it contains the original content,
         # return just the generated content without subsection headers
-        complete_section = generated_subsections[0][1]
+        complete_section = f"{section_intro}\n\n{generated_subsections[0][1]}"
     else:
         # Otherwise, combine subsections with their titles
-        combined_parts = []
+        combined_parts = [section_intro]
         for subsection_title, subsection_content in generated_subsections:
             if subsection_title != "Main Content":
                 combined_parts.append(f"## {subsection_title}\n{subsection_content}")
@@ -1287,14 +1287,12 @@ def generate_section_with_subsections(section_title:str, section_guidelines:str,
         section_guidelines=section_guidelines
     )
 
-    # Get full patient data for critique (critique still uses full record for better verification)
-    full_patient_data = patient_data
-    
+    # Use full patient data for critique (critique still uses full record for better verification)
     print(f"\n\n [INFO] Generating patient information critique to the section '{section_title}'\n\n:")
     critique_result_patient_data = critique_section_patient_record(
         section_title=section_title,
         generated_text=complete_section,
-        patient_journal=full_patient_data
+        patient_journal=patient_data
     )
     
     # Check token usage after critique
