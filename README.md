@@ -40,7 +40,7 @@ The repository includes files for generating a medical document:
 
 ### Disclaimer
 * The structure of this code is not optimal in terms of good coding practice.
-** Future iterations will restructure the code into manageable scripts for better readability
+* Future iterations will restructure the code into manageable scripts for better readability
 
 ### LLMs and Embeddings
 
